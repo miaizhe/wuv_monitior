@@ -26,6 +26,25 @@ curl -sSL https://raw.githubusercontent.com/miaizhe/wuv_monitior/main/install.sh
 - **交互配置**：安装过程中会提示输入 **后端连接地址**（默认 `http://localhost:3001`）。
 - **默认端口**：前端控制面板默认运行在 `5174` 端口，后端运行在 `3001` 端口。请确保防火墙已放行。
 
+## 🛠️ 维护与卸载
+
+### 查看状态
+```bash
+pm2 status
+```
+
+### 查看日志
+```bash
+pm2 logs vps-monitor-backend
+pm2 logs vps-monitor-frontend
+```
+
+### 卸载系统
+重新运行安装脚本并选择 **选项 4** 即可完成自动卸载：
+```bash
+curl -sSL https://raw.githubusercontent.com/miaizhe/wuv_monitior/main/install.sh | bash
+```
+
 ---
 
 ## 🛠️ 技术栈

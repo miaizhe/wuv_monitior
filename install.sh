@@ -48,11 +48,12 @@ show_menu() {
         echo -e "1. 安装完整版 (前后端同时安装)"
         echo -e "2. 仅安装后端 (被监控端 Agent)"
         echo -e "3. 仅安装前端 (控制面板 Dashboard)"
-        echo -e "4. 退出"
+        echo -e "4. 卸载 VPS Monitor"
+        echo -e "5. 退出"
         echo -e "${BLUE}========================================${NC}"
         
         # 使用 /dev/tty 确保在管道模式下也能读取输入
-        if ! read -p "请选择安装选项 [1-4]: " choice < /dev/tty; then
+        if ! read -p "请选择安装选项 [1-5]: " choice < /dev/tty; then
             echo -e "\n${RED}读取输入失败，请确保在交互式终端中运行${NC}"
             exit 1
         fi
@@ -71,6 +72,10 @@ show_menu() {
                 break
                 ;;
             4)
+                INSTALL_MODE="uninstall"
+                break
+                ;;
+            5)
                 exit 0
                 ;;
             *)
@@ -130,6 +135,40 @@ install_pm2() {
             ln -sf "$PM2_BIN" /usr/local/bin/pm2
         fi
     fi
+}
+
+uninstall_system() {
+    echo -e "${RED}警告: 此操作将卸载 VPS Monitor 并删除所有数据 (包括历史数据库)！${NC}"
+    read -p "确定要继续吗？[y/N]: " confirm < /dev/tty
+    if [[ ! $confirm =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}卸载已取消。${NC}"
+        exit 0
+    fi
+
+    echo -e "${YELLOW}正在停止并删除 PM2 进程...${NC}"
+    if command -v pm2 &> /dev/null; then
+        pm2 stop vps-monitor-backend &> /dev/null
+        pm2 delete vps-monitor-backend &> /dev/null
+        pm2 stop vps-monitor-frontend &> /dev/null
+        pm2 delete vps-monitor-frontend &> /dev/null
+        pm2 save --force
+    fi
+
+    echo -e "${YELLOW}正在删除安装目录 ($INSTALL_DIR)...${NC}"
+    rm -rf "$INSTALL_DIR"
+
+    echo -e "${YELLOW}正在清理防火墙规则...${NC}"
+    if command -v ufw &> /dev/null; then
+        ufw delete allow 3001/tcp &> /dev/null
+        ufw delete allow 5174/tcp &> /dev/null
+    elif command -v firewall-cmd &> /dev/null; then
+        firewall-cmd --permanent --remove-port=3001/tcp &> /dev/null
+        firewall-cmd --permanent --remove-port=5174/tcp &> /dev/null
+        firewall-cmd --reload &> /dev/null
+    fi
+
+    echo -e "${GREEN}卸载完成！${NC}"
+    exit 0
 }
 
 # --- 具体安装逻辑 ---
@@ -392,7 +431,12 @@ do_install_frontend() {
 # 1. 先让用户选择模式 (避免未选择就安装环境)
 show_menu
 
-# 2. 根据选择安装环境
+# 2. 如果是卸载模式，直接执行并退出
+if [ "$INSTALL_MODE" == "uninstall" ]; then
+    uninstall_system
+fi
+
+# 3. 根据选择安装环境
 echo -e "${YELLOW}正在准备基础运行环境...${NC}"
 install_nodejs
 install_pm2
