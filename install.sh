@@ -269,6 +269,15 @@ setInterval(() => db.prepare("DELETE FROM metrics WHERE timestamp < datetime('no
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => console.log(\`Server running on port \${PORT}\`));
+
+// 全局异常处理，防止进程崩溃
+process.on('uncaughtException', (err) => {
+  console.error('未捕获的异常:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('未处理的 Promise 拒绝:', reason);
+});
 EOF
     fi
 
@@ -358,12 +367,16 @@ if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "frontend" ]; then
 fi
 
 # 4. 统一收尾工作
-echo -e "${YELLOW}正在保存进程状态并设置开机自启...${NC}"
+echo -e "${YELLOW}正在配置开机自启和进程保活...${NC}"
+
+# 自动获取并执行 PM2 startup 命令
+STARTUP_CMD=$(pm2 startup | tail -n 1)
+if [[ $STARTUP_CMD == sudo* ]]; then
+    eval "$STARTUP_CMD"
+fi
+
 pm2 save
-pm2 startup
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}安装任务执行完毕！${NC}"
-[ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "backend" ] && echo -e "${BLUE}后端 Agent 端口: 3001${NC}"
-[ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "frontend" ] && echo -e "${BLUE}前端 Dashboard 端口: 5174 (请上传 dist 文件至 $INSTALL_DIR/frontend)${NC}"
-echo -e "${GREEN}========================================${NC}"
+echo -e "${BLUE}服务保活状态: 已启用 (通过 PM2)${NC}"
