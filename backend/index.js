@@ -8,6 +8,7 @@ const path = require('path');
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 // Database setup
 const db = new Database(path.join(__dirname, 'history.db'));
@@ -23,8 +24,51 @@ db.exec(`
     net_rx REAL,
     net_tx REAL,
     disk_usage REAL
-  )
+  );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
 `);
+
+// API to get settings
+app.get('/api/settings', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM settings').all();
+    const settings = {};
+    rows.forEach(row => {
+      try {
+        settings[row.key] = JSON.parse(row.value);
+      } catch (e) {
+        settings[row.key] = row.value;
+      }
+    });
+    res.json(settings);
+  } catch (e) {
+    res.status(500).json({ error: "Failed to fetch settings" });
+  }
+});
+
+// API to save settings
+app.post('/api/settings', (req, res) => {
+  try {
+    const settings = req.body;
+    const insert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+    
+    const transaction = db.transaction((data) => {
+      for (const [key, value] of Object.entries(data)) {
+        insert.run(key, JSON.stringify(value));
+      }
+    });
+    
+    transaction(settings);
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Save settings error:", e);
+    res.status(500).json({ error: "Failed to save settings" });
+  }
+});
 
 // API to get history
 app.get('/api/history', (req, res) => {
@@ -228,6 +272,18 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
+
+// Serve frontend static files if dist exists
+const frontendPath = path.join(__dirname, '../frontend/dist');
+if (require('fs').existsSync(frontendPath)) {
+  app.use(express.static(frontendPath));
+  // Handle SPA routing: forward all non-API requests to index.html
+  app.get(/^\/(?!api|socket\.io).*/, (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  });
+  console.log('Frontend detected and being served at /');
+}
+
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

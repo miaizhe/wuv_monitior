@@ -70,16 +70,18 @@ interface ServerConfig {
 }
 
 const App: React.FC = () => {
+  const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [servers, setServers] = useState<ServerConfig[]>(() => {
     const saved = localStorage.getItem('vps_servers');
-    let defaultUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    // 如果是通过当前服务器访问，优先连接当前服务器
+    let defaultUrl = window.location.origin;
     
-    // 智能识别：如果默认地址是 localhost 且用户通过外网访问，则自动尝试连接当前服务器 IP
-    if (defaultUrl.includes('localhost') && window.location.hostname !== 'localhost') {
-      defaultUrl = `http://${window.location.hostname}:3001`;
+    // 如果是开发环境或特殊情况，回退到环境变量
+    if (defaultUrl.includes('localhost:5173')) {
+      defaultUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
     }
     
-    return saved ? JSON.parse(saved) : [{ id: 'default', name: '默认服务器', url: defaultUrl }];
+    return saved ? JSON.parse(saved) : [{ id: 'default', name: '当前服务器', url: defaultUrl }];
   });
   
   const [activeServerId, setActiveServerId] = useState<string>(servers[0].id);
@@ -96,22 +98,10 @@ const App: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [protocolError, setProtocolError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // 检查混合内容 (Mixed Content) 风险
-    const isPageHttps = window.location.protocol === 'https:';
-    
-    if (isPageHttps && activeServer?.url.startsWith('http:')) {
-      setProtocolError('检测到混合内容风险：您正在通过 HTTPS 访问面板，但后端地址使用的是不安全的 HTTP。浏览器已阻止此连接。请尝试使用 HTTP 协议访问面板。');
-    } else {
-      setProtocolError(null);
-    }
-  }, [activeServer.url]);
-  const [bgImage, setBgImage] = useState<string | null>(() => {
-    return localStorage.getItem('vps_bg_image');
-  });
-  const [themeColor, setThemeColor] = useState<string>(() => {
-    return localStorage.getItem('vps_theme_color') || '#3b82f6';
-  });
+  const activeServer = servers.find(s => s.id === activeServerId) || servers[0];
+
+  const [bgImage, setBgImage] = useState<string | null>(() => localStorage.getItem('vps_bg_image'));
+  const [themeColor, setThemeColor] = useState<string>(() => localStorage.getItem('vps_theme_color') || '#3b82f6');
   const [cardOpacity, setCardOpacity] = useState<number>(() => {
     const saved = localStorage.getItem('vps_card_opacity');
     return saved ? parseFloat(saved) : 1;
@@ -128,15 +118,66 @@ const App: React.FC = () => {
     return (localStorage.getItem('vps_net_unit') as any) || 'Auto';
   });
 
-  const activeServer = servers.find(s => s.id === activeServerId) || servers[0];
+  // Fetch settings from cloud
+  const fetchCloudSettings = useCallback(async () => {
+    try {
+      const response = await fetch(`${activeServer.url}/api/settings`);
+      if (response.ok) {
+        const cloudSettings = await response.json();
+        if (Object.keys(cloudSettings).length > 0) {
+          if (cloudSettings.isDarkMode !== undefined) setIsDarkMode(cloudSettings.isDarkMode);
+          if (cloudSettings.themeColor !== undefined) setThemeColor(cloudSettings.themeColor);
+          if (cloudSettings.cardOpacity !== undefined) setCardOpacity(cloudSettings.cardOpacity);
+          if (cloudSettings.maskOpacity !== undefined) setMaskOpacity(cloudSettings.maskOpacity);
+          if (cloudSettings.netUnit !== undefined) setNetUnit(cloudSettings.netUnit);
+          if (cloudSettings.servers !== undefined) setServers(cloudSettings.servers);
+          if (cloudSettings.bgImage !== undefined) setBgImage(cloudSettings.bgImage);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch cloud settings:", e);
+    } finally {
+      setIsSettingsLoading(false);
+    }
+  }, [activeServer.url]);
+
+  // Save settings to cloud
+  const saveCloudSettings = useCallback(async (updates: any) => {
+    try {
+      await fetch(`${activeServer.url}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+    } catch (e) {
+      console.error("Failed to save cloud settings:", e);
+    }
+  }, [activeServer.url]);
+
+  useEffect(() => {
+    fetchCloudSettings();
+  }, [fetchCloudSettings]);
+
+  useEffect(() => {
+    // 检查混合内容 (Mixed Content) 风险
+    const isPageHttps = window.location.protocol === 'https:';
+    
+    if (isPageHttps && activeServer?.url.startsWith('http:')) {
+      setProtocolError('检测到混合内容风险：您正在通过 HTTPS 访问面板，但后端地址使用的是不安全的 HTTP。浏览器已阻止此连接。请尝试使用 HTTP 协议访问面板。');
+    } else {
+      setProtocolError(null);
+    }
+  }, [activeServer.url]);
 
   useEffect(() => {
     localStorage.setItem('vps_net_unit', netUnit);
-  }, [netUnit]);
+    if (!isSettingsLoading) saveCloudSettings({ netUnit });
+  }, [netUnit, isSettingsLoading, saveCloudSettings]);
 
   useEffect(() => {
     localStorage.setItem('vps_servers', JSON.stringify(servers));
-  }, [servers]);
+    if (!isSettingsLoading) saveCloudSettings({ servers });
+  }, [servers, isSettingsLoading, saveCloudSettings]);
 
   useEffect(() => {
     if (bgImage) {
@@ -144,19 +185,23 @@ const App: React.FC = () => {
     } else {
       localStorage.removeItem('vps_bg_image');
     }
-  }, [bgImage]);
+    if (!isSettingsLoading) saveCloudSettings({ bgImage });
+  }, [bgImage, isSettingsLoading, saveCloudSettings]);
 
   useEffect(() => {
     localStorage.setItem('vps_theme_color', themeColor);
-  }, [themeColor]);
+    if (!isSettingsLoading) saveCloudSettings({ themeColor });
+  }, [themeColor, isSettingsLoading, saveCloudSettings]);
 
   useEffect(() => {
     localStorage.setItem('vps_card_opacity', cardOpacity.toString());
-  }, [cardOpacity]);
+    if (!isSettingsLoading) saveCloudSettings({ cardOpacity });
+  }, [cardOpacity, isSettingsLoading, saveCloudSettings]);
 
   useEffect(() => {
     localStorage.setItem('vps_mask_opacity', maskOpacity.toString());
-  }, [maskOpacity]);
+    if (!isSettingsLoading) saveCloudSettings({ maskOpacity });
+  }, [maskOpacity, isSettingsLoading, saveCloudSettings]);
 
   useEffect(() => {
     localStorage.setItem('vps_dark_mode', isDarkMode.toString());
@@ -165,7 +210,8 @@ const App: React.FC = () => {
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, [isDarkMode]);
+    if (!isSettingsLoading) saveCloudSettings({ isDarkMode });
+  }, [isDarkMode, isSettingsLoading, saveCloudSettings]);
 
   useEffect(() => {
     if (activeTab === 'history') {

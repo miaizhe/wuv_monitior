@@ -2,7 +2,7 @@
 
 # ==========================================
 # VPS Monitor 一键安装脚本 (在线版)
-# Version: 1.2.0
+# Version: 1.3.0
 # GitHub: https://github.com/miaizhe/wuv_monitior
 # 用法: curl -sSL https://raw.githubusercontent.com/miaizhe/wuv_monitior/main/install.sh | bash
 # ==========================================
@@ -535,14 +535,17 @@ do_install_frontend() {
     pm2 stop vps-monitor-frontend &> /dev/null
     
     # 获取 serve 的绝对路径以提高稳定性
-    SERVE_BIN=$(which serve || npm config get prefix | awk '{print $1"/bin/serve"}')
-    if [ -f "$SERVE_BIN" ]; then
-        pm2 start "$SERVE_BIN" --name vps-monitor-frontend -- -s . -p 5174
-    else
-        pm2 start "npx serve -s . -p 5174" --name vps-monitor-frontend
-    fi
+    # SERVE_BIN=$(which serve || npm config get prefix | awk '{print $1"/bin/serve"}')
+    # if [ -f "$SERVE_BIN" ]; then
+    #     pm2 start "$SERVE_BIN" --name vps-monitor-frontend -- -s . -p 5174
+    # else
+    #     pm2 start "npx serve -s . -p 5174" --name vps-monitor-frontend
+    # fi
+    
+    echo -e "${GREEN}前端编译并集成到后端成功！${NC}"
+    echo -e "${BLUE}现在您可以通过后端地址直接访问完整面板。${NC}"
 
-    # 防火墙
+    # 防火墙 (保留 5174 选项但提示 3001)
     if command -v ufw &> /dev/null; then
         ufw allow 5174/tcp
     elif command -v firewall-cmd &> /dev/null; then
@@ -610,3 +613,7 @@ fi
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}安装任务执行完毕！${NC}"
 echo -e "${BLUE}服务保活状态: 已启用 (通过 PM2)${NC}"
+echo -e "${YELLOW}访问地址: http://$PUBLIC_IP:3001${NC}"
+echo -e "${CYAN}提示: 现在前端已集成到后端端口，您只需访问 3001 端口即可使用完整功能。${NC}"
+echo -e "${CYAN}      您的所有设置（主题、服务器列表等）现已保存在服务器数据库中。${NC}"
+echo -e "${GREEN}========================================${NC}"
