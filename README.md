@@ -13,13 +13,20 @@
 
 ## 🚀 快速开始 (一键安装)
 
-在您的 VPS 上运行以下命令即可完成部署：
+在您的 VPS 上使用 root 权限运行以下命令即可完成部署：
 
+### 在线安装命令
 ```bash
 curl -sSL https://raw.githubusercontent.com/miaizhe/wuv_monitior/main/install.sh | bash
 ```
 
-> **注意**：安装过程中会提示输入后端连接地址（默认 `http://localhost:3001`）。
+### 安装说明
+- **环境要求**：支持 Ubuntu 20.04+、Debian 10+、CentOS 7+。
+- **自动配置**：脚本将自动安装 Node.js、PM2、Git 等必要环境。
+- **交互配置**：安装过程中会提示输入 **后端连接地址**（默认 `http://localhost:3001`）。
+- **默认端口**：前端控制面板默认运行在 `5174` 端口，后端运行在 `3001` 端口。请确保防火墙已放行。
+
+---
 
 ## 🛠️ 技术栈
 

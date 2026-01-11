@@ -41,38 +41,50 @@ install_git() {
 }
 
 show_menu() {
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${GREEN}   VPS Monitor 一键安装工具${NC}"
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "1. 安装完整版 (前后端同时安装)"
-    echo -e "2. 仅安装后端 (被监控端 Agent)"
-    echo -e "3. 仅安装前端 (控制面板 Dashboard)"
-    echo -e "4. 退出"
-    echo -e "${BLUE}========================================${NC}"
-    read -p "请选择安装选项 [1-4]: " choice
+    while true; do
+        echo -e "${BLUE}========================================${NC}"
+        echo -e "${GREEN}   VPS Monitor 一键安装工具${NC}"
+        echo -e "${BLUE}========================================${NC}"
+        echo -e "1. 安装完整版 (前后端同时安装)"
+        echo -e "2. 仅安装后端 (被监控端 Agent)"
+        echo -e "3. 仅安装前端 (控制面板 Dashboard)"
+        echo -e "4. 退出"
+        echo -e "${BLUE}========================================${NC}"
+        
+        # 使用 /dev/tty 确保在管道模式下也能读取输入
+        if ! read -p "请选择安装选项 [1-4]: " choice < /dev/tty; then
+            echo -e "\n${RED}读取输入失败，请确保在交互式终端中运行${NC}"
+            exit 1
+        fi
 
-    case $choice in
-        1)
-            INSTALL_MODE="full"
-            ;;
-        2)
-            INSTALL_MODE="backend"
-            ;;
-        3)
-            INSTALL_MODE="frontend"
-            ;;
-        4)
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}无效选项，请重新选择${NC}"
-            show_menu
-            ;;
-    esac
+        case $choice in
+            1)
+                INSTALL_MODE="full"
+                break
+                ;;
+            2)
+                INSTALL_MODE="backend"
+                break
+                ;;
+            3)
+                INSTALL_MODE="frontend"
+                break
+                ;;
+            4)
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}无效选项 [$choice]，请重新选择${NC}"
+                ;;
+        esac
+    done
 
     if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "frontend" ]; then
         echo -e "${YELLOW}请输入后端连接地址 (例如 http://your_server_ip:3001)${NC}"
-        read -p "后端地址 [默认 http://localhost:3001]: " BACKEND_URL
+        # 同样为后端地址输入添加 /dev/tty
+        if ! read -p "后端地址 [默认 http://localhost:3001]: " BACKEND_URL < /dev/tty; then
+            BACKEND_URL="http://localhost:3001"
+        fi
         BACKEND_URL=${BACKEND_URL:-"http://localhost:3001"}
     fi
 }
