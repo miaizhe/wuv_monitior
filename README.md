@@ -39,6 +39,12 @@ pm2 logs vps-monitor-backend
 pm2 logs vps-monitor-frontend
 ```
 
+### 备份与恢复数据库
+为了保护您的历史监控数据，脚本现在支持一键备份与恢复：
+1. 重新运行安装脚本。
+2. 选择 **选项 5** (备份) 或 **选项 6** (恢复)。
+3. 备份文件将保存在 `/opt/vps-monitor/backups` 目录下。
+
 ### 卸载系统
 重新运行安装脚本并选择 **选项 4** 即可完成自动卸载：
 ```bash

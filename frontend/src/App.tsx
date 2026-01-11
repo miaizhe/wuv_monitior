@@ -94,6 +94,18 @@ const App: React.FC = () => {
   const [showAddServer, setShowAddServer] = useState(false);
   const [newServer, setNewServer] = useState({ name: '', url: '' });
   const [isConnected, setIsConnected] = useState(false);
+  const [protocolError, setProtocolError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // 检查混合内容 (Mixed Content) 风险
+    const isPageHttps = window.location.protocol === 'https:';
+    
+    if (isPageHttps && activeServer?.url.startsWith('http:')) {
+      setProtocolError('检测到混合内容风险：您正在通过 HTTPS 访问面板，但后端地址使用的是不安全的 HTTP。浏览器已阻止此连接。请尝试使用 HTTP 协议访问面板。');
+    } else {
+      setProtocolError(null);
+    }
+  }, [activeServer.url]);
   const [bgImage, setBgImage] = useState<string | null>(() => {
     return localStorage.getItem('vps_bg_image');
   });
@@ -500,21 +512,45 @@ const App: React.FC = () => {
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
             <div 
               className={cn(
-                "p-8 rounded-2xl border shadow-2xl transition-colors duration-300",
+                "p-8 rounded-2xl border shadow-2xl transition-colors duration-300 max-w-md",
                 isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
               )}
               style={{ backgroundColor: isDarkMode ? `rgba(30, 41, 59, ${cardOpacity})` : `rgba(255, 255, 255, ${cardOpacity})` }}
             >
-              <RefreshCw className="size-12 animate-spin mx-auto mb-4" style={{ color: themeColor }} />
-              <h2 className={cn("text-xl font-bold mb-2", isDarkMode ? "text-slate-100" : "text-slate-900")}>正在尝试连接服务器...</h2>
-              <p className="text-slate-400 max-w-xs">请确保后端程序已在 {activeServer.url} 启动并允许跨域请求。</p>
-              <button 
-                onClick={() => connectToSocket(activeServer.url)}
-                className="mt-6 px-6 py-2 rounded-lg font-bold transition-all text-white"
-                style={{ backgroundColor: themeColor }}
-              >
-                重试连接
-              </button>
+              {protocolError ? (
+                <>
+                  <X className="size-12 mx-auto mb-4 text-red-500" />
+                  <h2 className={cn("text-xl font-bold mb-2", isDarkMode ? "text-slate-100" : "text-slate-900")}>协议不匹配</h2>
+                  <p className="text-red-400 mb-6">{protocolError}</p>
+                  <div className="space-y-3">
+                    <button 
+                      onClick={() => window.location.href = window.location.href.replace('https:', 'http:')}
+                      className="w-full px-6 py-2 rounded-lg font-bold bg-red-500 text-white hover:bg-red-600 transition-colors"
+                    >
+                      尝试切换到 HTTP 访问
+                    </button>
+                    <button 
+                      onClick={() => setShowSettings(true)}
+                      className="w-full px-6 py-2 rounded-lg font-bold border border-slate-600 text-slate-400 hover:text-white transition-colors"
+                    >
+                      修改后端地址
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="size-12 animate-spin mx-auto mb-4" style={{ color: themeColor }} />
+                  <h2 className={cn("text-xl font-bold mb-2", isDarkMode ? "text-slate-100" : "text-slate-900")}>正在尝试连接服务器...</h2>
+                  <p className="text-slate-400 max-w-xs">请确保后端程序已在 {activeServer.url} 启动并允许跨域请求。</p>
+                  <button 
+                    onClick={() => connectToSocket(activeServer.url)}
+                    className="mt-6 px-6 py-2 rounded-lg font-bold transition-all text-white"
+                    style={{ backgroundColor: themeColor }}
+                  >
+                    重试连接
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ) : !metrics ? (

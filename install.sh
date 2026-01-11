@@ -2,7 +2,7 @@
 
 # ==========================================
 # VPS Monitor 一键安装脚本 (在线版)
-# Version: 1.1.0
+# Version: 1.2.0
 # GitHub: https://github.com/miaizhe/wuv_monitior
 # 用法: curl -sSL https://raw.githubusercontent.com/miaizhe/wuv_monitior/main/install.sh | bash
 # ==========================================
@@ -50,11 +50,13 @@ show_menu() {
         echo -e "2. 仅安装后端 (被监控端 Agent)"
         echo -e "3. 仅安装前端 (控制面板 Dashboard)"
         echo -e "4. 卸载 VPS Monitor"
-        echo -e "5. 退出"
+        echo -e "5. 备份历史数据库"
+        echo -e "6. 恢复历史数据库"
+        echo -e "7. 退出"
         echo -e "${BLUE}========================================${NC}"
         
         # 使用 /dev/tty 确保在管道模式下也能读取输入
-        if ! read -p "请选择安装选项 [1-5]: " choice < /dev/tty; then
+        if ! read -p "请选择操作选项 [1-7]: " choice < /dev/tty; then
             echo -e "\n${RED}读取输入失败，请确保在交互式终端中运行${NC}"
             exit 1
         fi
@@ -77,6 +79,14 @@ show_menu() {
                 break
                 ;;
             5)
+                INSTALL_MODE="backup"
+                break
+                ;;
+            6)
+                INSTALL_MODE="restore"
+                break
+                ;;
+            7)
                 exit 0
                 ;;
             *)
@@ -88,6 +98,8 @@ show_menu() {
     if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "frontend" ]; then
         echo -e "${YELLOW}请输入后端连接地址 (例如 http://your_server_ip:3001)${NC}"
         echo -e "${YELLOW}注意: 如果是通过外网访问面板，请务必输入服务器的公网 IP${NC}"
+        echo -e "${CYAN}提示: 如果您打算通过 HTTPS 访问面板，后端也必须配置 SSL (如通过 Nginx 转发)${NC}"
+        echo -e "${CYAN}      否则请统一使用 HTTP 协议访问。${NC}"
         
         # 尝试自动获取公网 IP 作为默认建议
         PUBLIC_IP=$(curl -s https://ifconfig.me || curl -s https://api.ipify.org || echo "localhost")
@@ -175,6 +187,65 @@ uninstall_system() {
 
     echo -e "${GREEN}卸载完成！${NC}"
     exit 0
+}
+
+backup_data() {
+    BACKUP_DIR="$INSTALL_DIR/backups"
+    DB_FILE="$INSTALL_DIR/backend/history.db"
+    
+    if [ ! -f "$DB_FILE" ]; then
+        echo -e "${RED}错误: 数据库文件不存在 ($DB_FILE)${NC}"
+        return 1
+    fi
+    
+    mkdir -p "$BACKUP_DIR"
+    BACKUP_NAME="history_$(date +%Y%m%d_%H%M%S).db"
+    
+    echo -e "${YELLOW}正在备份数据库...${NC}"
+    cp "$DB_FILE" "$BACKUP_DIR/$BACKUP_NAME"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}备份成功: $BACKUP_DIR/$BACKUP_NAME${NC}"
+        # 只保留最近 10 个备份
+        cd "$BACKUP_DIR" && ls -t history_*.db | tail -n +11 | xargs -r rm
+    else
+        echo -e "${RED}备份失败！${NC}"
+    fi
+}
+
+restore_data() {
+    BACKUP_DIR="$INSTALL_DIR/backups"
+    DB_FILE="$INSTALL_DIR/backend/history.db"
+    
+    if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A "$BACKUP_DIR")" ]; then
+        echo -e "${RED}错误: 未找到任何备份文件${NC}"
+        return 1
+    fi
+    
+    echo -e "${BLUE}可用备份列表:${NC}"
+    select backup in $(ls -t "$BACKUP_DIR"/history_*.db | xargs -n 1 basename); do
+        if [ -n "$backup" ]; then
+            echo -e "${YELLOW}确认恢复备份: $backup? (此操作将覆盖当前数据库)${NC}"
+            read -p "确定吗？[y/N]: " confirm < /dev/tty
+            if [[ $confirm =~ ^[Yy]$ ]]; then
+                echo -e "${YELLOW}正在停止后端服务...${NC}"
+                pm2 stop vps-monitor-backend &> /dev/null
+                
+                echo -e "${YELLOW}正在恢复数据库...${NC}"
+                cp "$BACKUP_DIR/$backup" "$DB_FILE"
+                
+                echo -e "${YELLOW}正在重启后端服务...${NC}"
+                pm2 start vps-monitor-backend &> /dev/null
+                
+                echo -e "${GREEN}恢复完成！${NC}"
+            else
+                echo -e "${BLUE}已取消恢复。${NC}"
+            fi
+            break
+        else
+            echo -e "${RED}无效选择${NC}"
+        fi
+    done
 }
 
 # --- 具体安装逻辑 ---
@@ -459,12 +530,23 @@ if [ "$INSTALL_MODE" == "uninstall" ]; then
     uninstall_system
 fi
 
-# 3. 根据选择安装环境
+# 3. 如果是备份或恢复模式
+if [ "$INSTALL_MODE" == "backup" ]; then
+    backup_data
+    exit 0
+fi
+
+if [ "$INSTALL_MODE" == "restore" ]; then
+    restore_data
+    exit 0
+fi
+
+# 4. 根据选择安装环境
 echo -e "${YELLOW}正在准备基础运行环境...${NC}"
 install_nodejs
 install_pm2
 
-# 3. 执行具体安装
+# 5. 执行具体安装
 if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "backend" ]; then
     do_install_backend
 fi
@@ -473,7 +555,7 @@ if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "frontend" ]; then
     do_install_frontend
 fi
 
-# 4. 统一收尾工作
+# 6. 统一收尾工作
 echo -e "${YELLOW}正在配置开机自启和进程保活...${NC}"
 
 # 再次确保 PM2 可用
