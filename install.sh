@@ -341,11 +341,11 @@ EOF
     cd $INSTALL_DIR/backend
 
     echo -e "${YELLOW}正在安装后端依赖...${NC}"
-    npm install --build-from-source
+    npm install
     # 强制重新编译 better-sqlite3 以匹配当前系统的 Node.js 版本
     if [ -d "node_modules/better-sqlite3" ]; then
         echo -e "${YELLOW}正在为当前系统编译 better-sqlite3...${NC}"
-        npm rebuild better-sqlite3 --build-from-source
+        npm rebuild better-sqlite3
     fi
 
     # 启动后端
@@ -399,7 +399,10 @@ do_install_frontend() {
     echo "VITE_BACKEND_URL=$BACKEND_URL" > .env.production
     
     npm install
-    npm run build
+    if ! npm run build; then
+        echo -e "${RED}前端编译失败！请检查错误信息。${NC}"
+        exit 1
+    fi
     
     mkdir -p $INSTALL_DIR/frontend
     cp -r dist/* $INSTALL_DIR/frontend/
