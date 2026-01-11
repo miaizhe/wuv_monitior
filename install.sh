@@ -92,14 +92,14 @@ show_menu() {
 # --- 环境安装函数 ---
 
 install_nodejs() {
-    if ! command -v node &> /dev/null; then
-        echo -e "${YELLOW}正在安装编译依赖 (build-essential)...${NC}"
-        if command -v apt &> /dev/null; then
-            apt-get update && apt-get install -y build-essential python3
-        elif command -v yum &> /dev/null; then
-            yum groupinstall -y "Development Tools" && yum install -y python3
-        fi
+    echo -e "${YELLOW}正在检查并安装编译依赖 (build-essential)...${NC}"
+    if command -v apt-get &> /dev/null; then
+        apt-get update && apt-get install -y build-essential python3 make g++
+    elif command -v yum &> /dev/null; then
+        yum groupinstall -y "Development Tools" && yum install -y python3
+    fi
 
+    if ! command -v node &> /dev/null; then
         echo -e "${YELLOW}未检测到 Node.js，正在安装 (LTS)...${NC}"
         if command -v apt &> /dev/null; then
             curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
@@ -302,6 +302,11 @@ EOF
 
     echo -e "${YELLOW}正在安装后端依赖...${NC}"
     npm install
+    # 强制重新编译 better-sqlite3 以匹配当前系统的 Node.js 版本
+    if [ -d "node_modules/better-sqlite3" ]; then
+        echo -e "${YELLOW}正在为当前系统编译 better-sqlite3...${NC}"
+        npm rebuild better-sqlite3
+    fi
 
     # 启动后端
     pm2 stop vps-monitor-backend &> /dev/null
