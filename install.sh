@@ -93,6 +93,13 @@ show_menu() {
 
 install_nodejs() {
     if ! command -v node &> /dev/null; then
+        echo -e "${YELLOW}正在安装编译依赖 (build-essential)...${NC}"
+        if command -v apt &> /dev/null; then
+            apt-get update && apt-get install -y build-essential python3
+        elif command -v yum &> /dev/null; then
+            yum groupinstall -y "Development Tools" && yum install -y python3
+        fi
+
         echo -e "${YELLOW}未检测到 Node.js，正在安装 (LTS)...${NC}"
         if command -v apt &> /dev/null; then
             curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
@@ -299,6 +306,17 @@ EOF
     # 启动后端
     pm2 stop vps-monitor-backend &> /dev/null
     pm2 start index.js --name vps-monitor-backend
+    
+    # 等待几秒检查状态
+    sleep 3
+    if pm2 status vps-monitor-backend | grep -q "errored"; then
+        echo -e "${RED}后端启动失败！正在输出错误日志...${NC}"
+        pm2 logs vps-monitor-backend --lines 20 --no-daemon &
+        LOG_PID=$!
+        sleep 5
+        kill $LOG_PID
+        echo -e "${YELLOW}请检查上述错误（通常是由于缺少编译环境或端口冲突导致）${NC}"
+    fi
 
     # 防火墙
     if command -v ufw &> /dev/null; then
@@ -346,7 +364,14 @@ do_install_frontend() {
 
     # 启动前端托管
     pm2 stop vps-monitor-frontend &> /dev/null
-    pm2 start "serve -s . -p 5174" --name vps-monitor-frontend
+    
+    # 获取 serve 的绝对路径以提高稳定性
+    SERVE_BIN=$(which serve || npm config get prefix | awk '{print $1"/bin/serve"}')
+    if [ -f "$SERVE_BIN" ]; then
+        pm2 start "$SERVE_BIN" --name vps-monitor-frontend -- -s . -p 5174
+    else
+        pm2 start "npx serve -s . -p 5174" --name vps-monitor-frontend
+    fi
 
     # 防火墙
     if command -v ufw &> /dev/null; then
