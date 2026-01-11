@@ -272,18 +272,6 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
-
-// Serve frontend static files if dist exists
-const frontendPath = path.join(__dirname, '../frontend/dist');
-if (require('fs').existsSync(frontendPath)) {
-  app.use(express.static(frontendPath));
-  // Handle SPA routing: forward all non-API requests to index.html
-  app.get(/^\/(?!api|socket\.io).*/, (req, res) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
-  });
-  console.log('Frontend detected and being served at /');
-}
-
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
