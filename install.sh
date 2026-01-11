@@ -50,8 +50,8 @@ show_menu() {
         echo -e "2. 仅安装后端 (被监控端 Agent)"
         echo -e "3. 仅安装前端 (控制面板 Dashboard)"
         echo -e "4. 卸载 VPS Monitor"
-        echo -e "5. 备份历史数据库"
-        echo -e "6. 恢复历史数据库"
+        echo -e "5. 备份历史数据与设置"
+        echo -e "6. 恢复历史数据与设置"
         echo -e "7. 退出"
         echo -e "${BLUE}========================================${NC}"
         
@@ -109,6 +109,15 @@ show_menu() {
             BACKEND_URL="http://$PUBLIC_IP:3001"
         fi
         BACKEND_URL=${BACKEND_URL:-"http://$PUBLIC_IP:3001"}
+        
+        # 保存设置到文件
+        mkdir -p "$INSTALL_DIR"
+        cat > "$INSTALL_DIR/settings.json" <<EOF
+{
+  "backend_url": "$BACKEND_URL",
+  "last_update": "$(date '+%Y-%m-%d %H:%M:%S')"
+}
+EOF
     fi
 }
 
@@ -192,30 +201,41 @@ uninstall_system() {
 backup_data() {
     BACKUP_DIR="$INSTALL_DIR/backups"
     DB_FILE="$INSTALL_DIR/backend/history.db"
+    SETTINGS_FILE="$INSTALL_DIR/settings.json"
     
-    if [ ! -f "$DB_FILE" ]; then
-        echo -e "${RED}错误: 数据库文件不存在 ($DB_FILE)${NC}"
+    if [ ! -f "$DB_FILE" ] && [ ! -f "$SETTINGS_FILE" ]; then
+        echo -e "${RED}错误: 未找到可备份的数据或设置文件${NC}"
         return 1
     fi
     
     mkdir -p "$BACKUP_DIR"
-    BACKUP_NAME="history_$(date +%Y%m%d_%H%M%S).db"
+    BACKUP_NAME="backup_$(date +%Y%m%d_%H%M%S).tar.gz"
     
-    echo -e "${YELLOW}正在备份数据库...${NC}"
-    cp "$DB_FILE" "$BACKUP_DIR/$BACKUP_NAME"
+    echo -e "${YELLOW}正在备份数据与设置...${NC}"
+    
+    # 创建临时备份目录
+    TEMP_BACKUP="/tmp/vps_monitor_bak"
+    rm -rf "$TEMP_BACKUP" && mkdir -p "$TEMP_BACKUP"
+    
+    [ -f "$DB_FILE" ] && cp "$DB_FILE" "$TEMP_BACKUP/"
+    [ -f "$SETTINGS_FILE" ] && cp "$SETTINGS_FILE" "$TEMP_BACKUP/"
+    
+    tar -czf "$BACKUP_DIR/$BACKUP_NAME" -C "$TEMP_BACKUP" .
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}备份成功: $BACKUP_DIR/$BACKUP_NAME${NC}"
         # 只保留最近 10 个备份
-        cd "$BACKUP_DIR" && ls -t history_*.db | tail -n +11 | xargs -r rm
+        cd "$BACKUP_DIR" && ls -t backup_*.tar.gz | tail -n +11 | xargs -r rm
     else
         echo -e "${RED}备份失败！${NC}"
     fi
+    rm -rf "$TEMP_BACKUP"
 }
 
 restore_data() {
     BACKUP_DIR="$INSTALL_DIR/backups"
     DB_FILE="$INSTALL_DIR/backend/history.db"
+    SETTINGS_FILE="$INSTALL_DIR/settings.json"
     
     if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A "$BACKUP_DIR")" ]; then
         echo -e "${RED}错误: 未找到任何备份文件${NC}"
@@ -223,21 +243,32 @@ restore_data() {
     fi
     
     echo -e "${BLUE}可用备份列表:${NC}"
-    select backup in $(ls -t "$BACKUP_DIR"/history_*.db | xargs -n 1 basename); do
+    select backup in $(ls -t "$BACKUP_DIR"/backup_*.tar.gz | xargs -n 1 basename); do
         if [ -n "$backup" ]; then
-            echo -e "${YELLOW}确认恢复备份: $backup? (此操作将覆盖当前数据库)${NC}"
+            echo -e "${YELLOW}确认恢复备份: $backup? (此操作将覆盖当前数据与设置)${NC}"
             read -p "确定吗？[y/N]: " confirm < /dev/tty
             if [[ $confirm =~ ^[Yy]$ ]]; then
-                echo -e "${YELLOW}正在停止后端服务...${NC}"
+                echo -e "${YELLOW}正在停止服务...${NC}"
                 pm2 stop vps-monitor-backend &> /dev/null
                 
-                echo -e "${YELLOW}正在恢复数据库...${NC}"
-                cp "$BACKUP_DIR/$backup" "$DB_FILE"
+                echo -e "${YELLOW}正在恢复数据与设置...${NC}"
+                TEMP_RESTORE="/tmp/vps_monitor_restore"
+                rm -rf "$TEMP_RESTORE" && mkdir -p "$TEMP_RESTORE"
+                tar -xzf "$BACKUP_DIR/$backup" -C "$TEMP_RESTORE"
                 
-                echo -e "${YELLOW}正在重启后端服务...${NC}"
+                [ -f "$TEMP_RESTORE/history.db" ] && cp "$TEMP_RESTORE/history.db" "$DB_FILE"
+                [ -f "$TEMP_RESTORE/settings.json" ] && cp "$TEMP_RESTORE/settings.json" "$SETTINGS_FILE"
+                
+                echo -e "${YELLOW}正在重启服务...${NC}"
                 pm2 start vps-monitor-backend &> /dev/null
                 
                 echo -e "${GREEN}恢复完成！${NC}"
+                if [ -f "$SETTINGS_FILE" ]; then
+                    RESTORED_URL=$(grep -oP '"backend_url":\s*"\K[^"]+' "$SETTINGS_FILE")
+                    echo -e "${CYAN}提示: 已恢复设置，后端地址为: $RESTORED_URL${NC}"
+                    echo -e "${CYAN}如果您需要重新编译前端以应用此地址，请重新运行安装选项 3${NC}"
+                fi
+                rm -rf "$TEMP_RESTORE"
             else
                 echo -e "${BLUE}已取消恢复。${NC}"
             fi
