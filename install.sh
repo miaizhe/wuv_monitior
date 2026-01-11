@@ -112,6 +112,16 @@ install_pm2() {
     if ! command -v pm2 &> /dev/null; then
         echo -e "${YELLOW}正在安装 PM2...${NC}"
         npm install -g pm2
+        # 强制刷新命令哈希表，确保新安装的命令立即可用
+        hash -r
+    fi
+    
+    # 如果还是找不到，尝试手动链接到 /usr/local/bin
+    if ! command -v pm2 &> /dev/null; then
+        PM2_BIN=$(npm config get prefix)/bin/pm2
+        if [ -f "$PM2_BIN" ]; then
+            ln -sf "$PM2_BIN" /usr/local/bin/pm2
+        fi
     fi
 }
 
@@ -369,13 +379,23 @@ fi
 # 4. 统一收尾工作
 echo -e "${YELLOW}正在配置开机自启和进程保活...${NC}"
 
-# 自动获取并执行 PM2 startup 命令
-STARTUP_CMD=$(pm2 startup | tail -n 1)
-if [[ $STARTUP_CMD == sudo* ]]; then
-    eval "$STARTUP_CMD"
+# 再次确保 PM2 可用
+hash -r
+if ! command -v pm2 &> /dev/null; then
+    # 最后的兜底尝试：从 npm prefix 获取路径
+    export PATH=$PATH:$(npm config get prefix)/bin
 fi
 
-pm2 save
+# 自动获取并执行 PM2 startup 命令
+if command -v pm2 &> /dev/null; then
+    STARTUP_CMD=$(pm2 startup | tail -n 1)
+    if [[ $STARTUP_CMD == sudo* ]]; then
+        eval "$STARTUP_CMD"
+    fi
+    pm2 save
+else
+    echo -e "${RED}警告: 未能找到 PM2 命令，保活配置可能失败。请手动运行 'npm install -g pm2' 后重试。${NC}"
+fi
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}安装任务执行完毕！${NC}"
