@@ -1,14 +1,17 @@
 #!/bin/bash
 
-# VPS Monitor 一键安装脚本
-# 适用于 Ubuntu/Debian/CentOS
+# ==========================================
+# VPS Monitor 一键安装脚本 (在线版)
+# GitHub: https://github.com/miaizhe/wuv_monitior
+# 用法: curl -sSL https://raw.githubusercontent.com/miaizhe/wuv_monitior/main/install.sh | bash
+# ==========================================
 
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
+YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
 # 1. 权限检查
 if [ "$EUID" -ne 0 ]; then 
@@ -18,8 +21,24 @@ fi
 
 # 安装目录
 INSTALL_DIR="/opt/vps-monitor"
+REPO_URL="https://github.com/miaizhe/wuv_monitior.git"
+TEMP_DIR="/tmp/vps-monitor-setup"
 
-# --- 菜单逻辑 ---
+# --- 环境安装函数 ---
+
+install_git() {
+    if ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}未检测到 Git，正在安装...${NC}"
+        if command -v apt &> /dev/null; then
+            apt-get update && apt-get install -y git
+        elif command -v yum &> /dev/null; then
+            yum install -y git
+        else
+            echo -e "${RED}无法安装 Git，请手动安装后重试${NC}"
+            exit 1
+        fi
+    fi
+}
 
 show_menu() {
     echo -e "${BLUE}========================================${NC}"
@@ -62,15 +81,15 @@ show_menu() {
 
 install_nodejs() {
     if ! command -v node &> /dev/null; then
-        echo -e "${YELLOW}未检测到 Node.js，正在安装...${NC}"
+        echo -e "${YELLOW}未检测到 Node.js，正在安装 (LTS)...${NC}"
         if command -v apt &> /dev/null; then
-            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+            curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
             apt-get install -y nodejs
         elif command -v yum &> /dev/null; then
-            curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+            curl -fsSL https://rpm.nodesource.com/setup_lts.x | bash -
             yum install -y nodejs
         else
-            echo -e "${RED}无法识别的包管理器，请手动安装 Node.js${NC}"
+            echo -e "${RED}不支持的包管理器，请手动安装 Node.js${NC}"
             exit 1
         fi
     fi
@@ -88,11 +107,28 @@ install_pm2() {
 
 do_install_backend() {
     echo -e "${BLUE}>>> 正在部署后端服务...${NC}"
-    mkdir -p $INSTALL_DIR/backend
-    cd $INSTALL_DIR/backend
+    
+    # 如果是在线安装且没有源码，先克隆
+    if [ ! -d "./backend" ] && [ ! -d "$TEMP_DIR/backend" ]; then
+        echo -e "${YELLOW}未在当前目录找到后端源码，正在从 GitHub 克隆...${NC}"
+        install_git
+        rm -rf $TEMP_DIR
+        git clone $REPO_URL $TEMP_DIR
+    fi
 
-    # 生成 package.json
-    cat > package.json <<EOF
+    mkdir -p $INSTALL_DIR/backend
+    
+    # 优先从源码目录复制，如果没有则使用脚本内置生成
+    if [ -d "./backend" ]; then
+        cp -r ./backend/* $INSTALL_DIR/backend/
+    elif [ -d "$TEMP_DIR/backend" ]; then
+        cp -r $TEMP_DIR/backend/* $INSTALL_DIR/backend/
+    else
+        # 兜底：使用脚本内置生成的代码
+        echo -e "${YELLOW}使用脚本内置后端逻辑...${NC}"
+        cd $INSTALL_DIR/backend
+        # 生成 package.json
+        cat > package.json <<EOF
 {
   "name": "vps-monitor-backend",
   "version": "1.0.0",
@@ -107,8 +143,8 @@ do_install_backend() {
 }
 EOF
 
-    # 生成 index.js
-    cat > index.js <<EOF
+        # 生成 index.js
+        cat > index.js <<EOF
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -222,6 +258,9 @@ setInterval(() => db.prepare("DELETE FROM metrics WHERE timestamp < datetime('no
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => console.log(\`Server running on port \${PORT}\`));
 EOF
+    fi
+
+    cd $INSTALL_DIR/backend
 
     echo -e "${YELLOW}正在安装后端依赖...${NC}"
     npm install
@@ -242,23 +281,32 @@ EOF
 do_install_frontend() {
     echo -e "${BLUE}>>> 正在部署前端服务...${NC}"
     
-    # 检查源码是否存在
-    if [ -d "./frontend" ]; then
-        echo -e "${YELLOW}检测到前端源码，正在编译...${NC}"
-        cd frontend
-        
-        # 写入编译时的环境变量
-        echo "VITE_BACKEND_URL=$BACKEND_URL" > .env.production
-        
-        npm install
-        npm run build
-        
-        mkdir -p $INSTALL_DIR/frontend
-        cp -r dist/* $INSTALL_DIR/frontend/
-        cd ..
-    else
-        echo -e "${RED}未检测到前端源码，请确保在项目根目录运行脚本${NC}"
-        exit 1
+    # 准备源码目录
+    SOURCE_DIR="."
+    if [ ! -d "./frontend" ]; then
+        echo -e "${YELLOW}未在当前目录找到源码，正在从 GitHub 克隆...${NC}"
+        install_git
+        rm -rf $TEMP_DIR
+        git clone $REPO_URL $TEMP_DIR
+        SOURCE_DIR=$TEMP_DIR
+    fi
+
+    echo -e "${YELLOW}正在编译前端...${NC}"
+    cd $SOURCE_DIR/frontend
+    
+    # 写入编译时的环境变量
+    echo "VITE_BACKEND_URL=$BACKEND_URL" > .env.production
+    
+    npm install
+    npm run build
+    
+    mkdir -p $INSTALL_DIR/frontend
+    cp -r dist/* $INSTALL_DIR/frontend/
+    
+    # 清理临时目录
+    if [ "$SOURCE_DIR" == "$TEMP_DIR" ]; then
+        cd /
+        rm -rf $TEMP_DIR
     fi
 
     cd $INSTALL_DIR/frontend
