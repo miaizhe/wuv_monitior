@@ -87,11 +87,16 @@ show_menu() {
 
     if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "frontend" ]; then
         echo -e "${YELLOW}请输入后端连接地址 (例如 http://your_server_ip:3001)${NC}"
+        echo -e "${YELLOW}注意: 如果是通过外网访问面板，请务必输入服务器的公网 IP${NC}"
+        
+        # 尝试自动获取公网 IP 作为默认建议
+        PUBLIC_IP=$(curl -s https://ifconfig.me || curl -s https://api.ipify.org || echo "localhost")
+        
         # 同样为后端地址输入添加 /dev/tty
-        if ! read -p "后端地址 [默认 http://localhost:3001]: " BACKEND_URL < /dev/tty; then
-            BACKEND_URL="http://localhost:3001"
+        if ! read -p "后端地址 [默认 http://$PUBLIC_IP:3001]: " BACKEND_URL < /dev/tty; then
+            BACKEND_URL="http://$PUBLIC_IP:3001"
         fi
-        BACKEND_URL=${BACKEND_URL:-"http://localhost:3001"}
+        BACKEND_URL=${BACKEND_URL:-"http://$PUBLIC_IP:3001"}
     fi
 }
 

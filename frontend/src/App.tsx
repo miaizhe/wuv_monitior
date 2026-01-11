@@ -72,7 +72,13 @@ interface ServerConfig {
 const App: React.FC = () => {
   const [servers, setServers] = useState<ServerConfig[]>(() => {
     const saved = localStorage.getItem('vps_servers');
-    const defaultUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    let defaultUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    
+    // 智能识别：如果默认地址是 localhost 且用户通过外网访问，则自动尝试连接当前服务器 IP
+    if (defaultUrl.includes('localhost') && window.location.hostname !== 'localhost') {
+      defaultUrl = `http://${window.location.hostname}:3001`;
+    }
+    
     return saved ? JSON.parse(saved) : [{ id: 'default', name: '默认服务器', url: defaultUrl }];
   });
   
