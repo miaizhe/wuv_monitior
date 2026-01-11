@@ -2,6 +2,7 @@
 
 # ==========================================
 # VPS Monitor 一键安装脚本 (在线版)
+# Version: 1.1.0
 # GitHub: https://github.com/miaizhe/wuv_monitior
 # 用法: curl -sSL https://raw.githubusercontent.com/miaizhe/wuv_monitior/main/install.sh | bash
 # ==========================================
@@ -340,14 +341,21 @@ EOF
     cd $INSTALL_DIR/backend
 
     echo -e "${YELLOW}正在安装后端依赖...${NC}"
-    npm install
+    npm install --build-from-source
     # 强制重新编译 better-sqlite3 以匹配当前系统的 Node.js 版本
     if [ -d "node_modules/better-sqlite3" ]; then
         echo -e "${YELLOW}正在为当前系统编译 better-sqlite3...${NC}"
-        npm rebuild better-sqlite3
+        npm rebuild better-sqlite3 --build-from-source
     fi
 
     # 启动后端
+    echo -e "${YELLOW}正在检查端口占用 (3001)...${NC}"
+    if command -v lsof &> /dev/null; then
+        lsof -i:3001 -t | xargs -r kill -9
+    elif command -v netstat &> /dev/null; then
+        netstat -nlp | grep :3001 | awk '{print $7}' | cut -d/ -f1 | xargs -r kill -9
+    fi
+
     pm2 stop vps-monitor-backend &> /dev/null
     pm2 start index.js --name vps-monitor-backend
     
@@ -407,6 +415,13 @@ do_install_frontend() {
     npm install -g serve
 
     # 启动前端托管
+    echo -e "${YELLOW}正在检查端口占用 (5174)...${NC}"
+    if command -v lsof &> /dev/null; then
+        lsof -i:5174 -t | xargs -r kill -9
+    elif command -v netstat &> /dev/null; then
+        netstat -nlp | grep :5174 | awk '{print $7}' | cut -d/ -f1 | xargs -r kill -9
+    fi
+
     pm2 stop vps-monitor-frontend &> /dev/null
     
     # 获取 serve 的绝对路径以提高稳定性
